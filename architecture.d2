@@ -1,0 +1,27 @@
+vars: {
+  d2-config: {
+    layout-engine: elk
+  }
+}
+
+CLIENT: Client {
+  PKCS: PKCS11\nDynamic lib
+  TPM: TPM {
+    shape: page
+  }
+  FILE: SSH Config
+  SQLITE: SQlite
+  TSSH: TSSH
+  SSH: SSH Client
+  TSSH -> FILE
+  TSSH <-> SQLITE
+  TSSH <-> TPM
+  PKCS <-> TPM
+  PKCS <-> SQLITE
+  SSH -> PKCS
+  SSH <- FILE
+}
+
+HOST: SSH Server
+
+HOST <-> CLIENT.SSH

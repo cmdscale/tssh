@@ -20,7 +20,7 @@ Execute the following from the project route:
 
 
  ```console
-cargo --path ./tssh/ --locked
+cargo install --path ./tssh/ --locked
  ```
 
 ## Nix tests
