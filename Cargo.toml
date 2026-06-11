@@ -1,0 +1,20 @@
+[workspace]
+members = [
+    "tssh", "tssh-core", "tssh-pkcs11",
+]
+
+# we only use tssh-pkcs11 as build dependency in tssh
+# this avoid the warnig of file name collisions
+
+default-members =[
+    "tssh", "tssh-core"
+]
+resolver = "3"
+
+
+
+[workspace.package]
+license = "GPL-3.0-or-later"
+version = "0.1.0"
+edition = "2024"
+

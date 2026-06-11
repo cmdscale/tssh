@@ -1,0 +1,11 @@
+{
+	"use_gitignore": true,
+	"file_types": {
+		"nix":{
+			"before_line": "# "
+		},
+		"rs": {
+			"before_line": "// "
+		}
+	}
+}

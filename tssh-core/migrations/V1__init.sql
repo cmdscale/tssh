@@ -1,0 +1,27 @@
+CREATE TABLE BackupKeys(
+id INTEGER PRIMARY KEY CHECK (id = 1),
+pub_key VARCHAR(2056) NOT NULL,
+template TEXT NOT NULL
+);
+
+CREATE TABLE Keys(
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+backup_key_id INTEGER,
+pkcs11_id VARCHAR(256) NOT NULL UNIQUE,
+host VARCHAR(256) NOT NULL,
+username VARCHAR(256) NOT NULL,
+port INTEGER NOT NULL,
+pub_key VARCHAR(2056) NOT NULL,
+template TEXT NOT NULL,
+UNIQUE(host,username),
+FOREIGN KEY(backup_key_id) REFERENCES BackupKeys(id)
+);
+
+CREATE TABLE Defaults(
+id INTEGER PRIMARY KEY CHECK (id = 1),
+default_ecc INTEGER,
+default_rsa INTEGER
+);
+
+
+

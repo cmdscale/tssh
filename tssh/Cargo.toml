@@ -1,0 +1,23 @@
+[package]
+name = "tssh"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+tssh-core={ path = "../tssh-core/" }
+anyhow = "1.0.102"
+clap = { version = "4.5.60", features = ["derive"] }
+comfy-table = "7.2.2"
+dirs = "6.0.0"
+rand = "0.10.1"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+xxhash-rust = { version = "0.8.15", features = ["xxh3"] }
+
+[dev-dependencies]
+rand = "0.10.1"
+
+[build-dependencies]
+xxhash-rust = { version = "0.8.15", features = ["xxh3"] }
+tssh-pkcs11={ path = "../tssh-pkcs11/" }

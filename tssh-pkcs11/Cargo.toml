@@ -1,0 +1,20 @@
+[package]
+name = "tssh-pkcs11"
+
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+tssh-core = {path = "../tssh-core/" }
+anyhow = "1.0.102"
+function_name = "0.3.0"
+p256 = "0.13.2"
+p384 = "0.13.1"
+pkcs11-sys = "0.2.25"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+p521 = "0.13.3"
