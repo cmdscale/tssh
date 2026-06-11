@@ -2,6 +2,7 @@
 *tssh* manages [TPM](https://trustedcomputinggroup.org/resource/tpm-library-specification/)-backed keys that are ready to use with *ssh*.
 Its main focus is to be as stateless as possible by leveraging the fact that TPMs can derive keys deterministically.
 By default, TSSH uses the username, hostname and port as the salt for key derivation, thereby ensuring that each host has a unique public key. Furthermore, TSSH ensures that the SSH server is offered only the correct key.
+Check further down for detailed diagrams.
 
 ## Prerequisites
 
@@ -76,6 +77,23 @@ localhost $> ssh user@example.com
 
 user@example.com $>
 ```
+
+# Diagrams
+
+## Architecture
+<div style="width: 100%;">
+  <img src="architecture.svg" style="width: 100%;" alt="Diagram of the architecture of tssh" />
+</div>
+
+## Key Creation
+<div style="width: 100%;">
+  <img src="key-creation.svg" style="width: 100%;" alt="Diagram of how keys are created by tssh" />
+</div>
+
+## SSH Login
+<div style="width: 100%;">
+  <img src="ssh-login.svg" style="width: 100%;" alt="Diagram of how a ssh login work with tssh" />
+</div>
 
 # Features planned
 * [ ] Key import
