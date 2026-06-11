@@ -1,0 +1,16 @@
+TSSH Key creation flow: {
+  shape: sequence_diagram
+
+  TSSH: TSSH
+  TPM: TPM
+  SQLITE: SQlite
+  FILE: SSH Config Files
+
+  TSSH -> TSSH: Derive best core template:\nAlgorithm,..
+  TSSH -> TSSH: Enrich template with salt:\nuser@host:22
+  TSSH -> TPM: Request public key\n for template
+  TPM -> TPM: Derive key pair\n with template
+  TPM -> TSSH: Public key
+  TSSH -> SQLite: Store Template
+  TSSH -> File: Write host config
+}
