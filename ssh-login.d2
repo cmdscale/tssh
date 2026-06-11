@@ -1,0 +1,24 @@
+SSH Login flow: {
+  shape: sequence_diagram
+
+  CLIENT: SSH Client
+  SQLITE: SQlite
+  FILE: SSH Config Files
+  PKCS11: PKCS11 lib
+  TPM: TPM
+  SERVER: SSH Server
+
+  CLIENT -> FILE: Lookup public key for user@host
+  FILE -> CLIENT: Public key
+  CLIENT -> SERVER: Offer public key
+  SERVER -> CLIENT: Challenge
+  CLIENT -> PKCS11: Key, challenge
+  PKCS11 -> SQLite: Lookup key
+  SQLITE -> PKCS11: Template
+  PKCS11 -> TPM: Derive key pair\nfor template
+  TPM -> TPM: Key pair
+  PKCS11 -> TPM: Challenge
+  TPM -> PKCS11: Solved challenge
+  PKCS11 -> CLIENT: Solved challenge
+  CLIENT -> SERVER: Solve challenge
+}
