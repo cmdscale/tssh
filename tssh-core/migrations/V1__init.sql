@@ -13,7 +13,7 @@ username VARCHAR(256) NOT NULL,
 port INTEGER NOT NULL,
 pub_key VARCHAR(2056) NOT NULL,
 template TEXT NOT NULL,
-UNIQUE(host,username),
+UNIQUE(host,username,port),
 FOREIGN KEY(backup_key_id) REFERENCES BackupKeys(id)
 );
 

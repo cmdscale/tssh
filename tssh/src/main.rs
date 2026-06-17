@@ -294,7 +294,7 @@ pub fn write_pkcs11_lib(path: &PathBuf) -> Result<()> {
         .write(true)
         .create(true)
         .truncate(true)
-        .mode(0o600)
+        .mode(0o700)
         .open(path)
         .context("while creating lib file")?;
 

@@ -408,7 +408,7 @@ impl TPMEccPubKey {
         raw_point.extend_from_slice(&self.y);
 
         let mut ret = Vec::new();
-        ret.push(0x4);
+        ret.push(0x04);
 
         if raw_point.len() < 128 {
             ret.push(raw_point.len() as u8);
@@ -798,7 +798,9 @@ pub struct Salt {
 impl Salt {
     fn new(a: &[u8], b: &[u8], c: &[u8]) -> Self {
         let mut hasher = sha2::Sha512::new();
+        hasher.update(a.len().to_be_bytes());
         hasher.update(a);
+        hasher.update(b.len().to_be_bytes());
         hasher.update(b);
         hasher.update(c);
 

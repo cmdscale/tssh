@@ -774,7 +774,7 @@ pub unsafe extern "C" fn C_GetMechanismList(
         return CKR_OK;
     }
 
-    if unsafe { *pul_count } < 1 {
+    if unsafe { *pul_count } < SUPPORTED_MECHANISMS.len() as u64 {
         error!("get mechaninslam list buffer too small");
         return CKR_BUFFER_TOO_SMALL;
     }
