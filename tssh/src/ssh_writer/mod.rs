@@ -51,9 +51,12 @@ impl FileEntry {
     }
 }
 
-impl From<(DBKey, &str, &str)> for FileEntry {
-    fn from((value, lib_path, file_path): (DBKey, &str, &str)) -> Self {
-        let host_template = HostTemplate::try_from(&value).expect("change this"); //TODO: change
+impl TryFrom<(DBKey, &str, &str)> for FileEntry{
+    type Error=anyhow::Error;
+
+    fn try_from((db_key, lib_path, file_path): (DBKey, &str, &str)) -> std::prelude::v1::Result<Self, Self::Error> {
+
+        let host_template = HostTemplate::try_from(&db_key).context("while parsing host template from db key")?;
 
         let accepted_algorithms = match host_template.template {
             tssh_core::tpm::Template::RSA(rsa_template) => match rsa_template.keybits {
@@ -69,16 +72,20 @@ impl From<(DBKey, &str, &str)> for FileEntry {
             },
         };
 
-        Self {
-            host: value.host,
-            username: value.username,
-            port: value.port,
+        Ok(Self {
+            host: db_key.host,
+            username: db_key.username,
+            port: db_key.port,
             pkcs11_provider: lib_path.to_string(),
             identity_file: file_path.to_string(),
             accepted_algorithms: accepted_algorithms.to_string(),
-        }
+        })
+
+
     }
 }
+
+
 
 const KEY_DIR_NAME: &str = "keys";
 const SSH_FILE_NAME: &str = "ssh_file";
@@ -111,17 +118,17 @@ where
         file.write_all(x.pub_key.as_bytes())
             .context("while writing to keyfile")?;
         ssh_file_content.push_str(
-            FileEntry::from((
+            FileEntry::try_from((
                 x,
                 env.lib_path.to_string_lossy().to_string().as_str(),
                 file_path.to_string_lossy().to_string().as_str(),
-            ))
+            ))?
             .as_file_entry()
             .as_str(),
         );
     }
 
-    std::fs::write(tssh_ssh_file_path, ssh_file_content.as_bytes()).context("wile writing ssh file")
+    std::fs::write(tssh_ssh_file_path, ssh_file_content.as_bytes()).context("while writing ssh file")
 }
 
 pub fn generate_include(env: &DirEnv) -> Result<String> {
