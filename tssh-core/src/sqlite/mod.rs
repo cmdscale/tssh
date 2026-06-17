@@ -354,10 +354,11 @@ fn keys() -> Result<()> {
     let err = db.add_key(key);
     assert!(err.is_err());
 
-    //adding a key with same user,host combination must fail
+    //adding a key with same user,host,port combination must fail
     let mut key = DBKey::generate_random_key();
     key.host = ret.host;
     key.username = ret.username;
+    key.port =ret.port;
     let err = db.add_key(key);
     assert!(err.is_err());
 
