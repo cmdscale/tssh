@@ -52,7 +52,7 @@ fn main() -> anyhow::Result<()> {
 
     match commands.command {
         commandline::Commands::Add(add_key) => handle_add(db, add_key),
-        commandline::Commands::List => handle_list(db),
+        commandline::Commands::List(list) => handle_list(db, list),
         commandline::Commands::Clear => handle_clear(db),
         commandline::Commands::Get(get_key) => handle_get(db, get_key),
         commandline::Commands::Sync => handle_sync(db),
@@ -122,7 +122,7 @@ fn handle_include(_db: DB, i: commandline::Include) -> Result<()> {
 }
 
 fn handle_sync(db: DB) -> Result<()> {
-    let entries = db.get_keys(DBPage::default())?; //TODO: all keys..
+    let entries = db.get_all_keys()?; //TODO: all keys..
     ssh_writer::write(entries, &ensure_dir_env()?)
 }
 
@@ -170,8 +170,8 @@ fn handle_add(db: DB, add_key: commandline::AddKey) -> Result<()> {
     Ok(())
 }
 
-fn handle_list(db: DB) -> Result<()> {
-    let keys = db.get_keys(DBPage::default())?; //TODO: size ..
+fn handle_list(db: DB, list: commandline::List) -> Result<()> {
+    let keys = db.get_keys(DBPage::new(list.page, list.size))?;
 
     let mut table = Table::new();
 
@@ -204,11 +204,12 @@ fn handle_list(db: DB) -> Result<()> {
 }
 
 fn handle_get(db: DB, get_key: commandline::GetKey) -> Result<()> {
-    let key = db.get_key_by_login(
-        &get_key.user.host,
-        &get_key.user.username,
-        get_key.user.port,
-    )?;
+    let key = match get_key.identifier {
+        commandline::Identifier::Id(id) => db.get_key_by_id(id)?,
+        commandline::Identifier::User(user) => {
+            db.get_key_by_login(&user.host, &user.username, user.port)?
+        }
+    };
 
     if get_key.raw {
         print!("{}", key.pub_key);
@@ -216,8 +217,8 @@ fn handle_get(db: DB, get_key: commandline::GetKey) -> Result<()> {
     }
 
     println!(
-        "========== Key for {} =========\n\n{}\n",
-        get_key.user, key.pub_key
+        "========== Key for {}@{}:{} =========\n\n{}\n",
+        key.username, key.host, key.port, key.pub_key
     );
 
     Ok(())

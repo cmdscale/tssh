@@ -33,10 +33,18 @@ pub enum Commands {
     Get(GetKey),
     Delete(DeleteKey),
     Sync,
-    List,
+    List(List),
     Clear,
     Include(Include),
     Check,
+}
+
+#[derive(Args, Debug)]
+pub struct List {
+    #[arg(long, default_value_t = 0)]
+    pub page: u32,
+    #[arg(long, default_value_t = 101)]
+    pub size: u32,
 }
 
 #[derive(Args, Debug)]
@@ -61,7 +69,7 @@ pub struct AddKey {
 
 #[derive(Args, Debug)]
 pub struct GetKey {
-    pub user: User,
+    pub identifier: Identifier,
     #[arg(long)]
     pub raw: bool,
 }

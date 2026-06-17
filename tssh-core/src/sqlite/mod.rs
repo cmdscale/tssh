@@ -84,6 +84,43 @@ RETURNING id
         .context("while adding key to DB")
     }
 
+    pub fn get_all_keys(&self) -> Result<Vec<DBKey>> {
+        const STMT: &str = "
+SELECT
+id,
+pkcs11_id,
+host,
+username,
+port,
+pub_key,
+template,
+backup_key_id
+FROM KEYS
+ORDER BY id ASC
+";
+
+        let mut stmt = self.c.prepare(STMT)?;
+
+        let mut rows = stmt.query([])?;
+
+        let mut ret = Vec::new();
+
+        while let Some(r) = rows.next()? {
+            ret.push(DBKey {
+                id: r.get(0)?,
+                pkcs11_id: r.get(1)?,
+                host: r.get(2)?,
+                username: r.get(3)?,
+                port: r.get(4)?,
+                pub_key: r.get(5)?,
+                template: r.get(6)?,
+                backup_key: r.get(7)?,
+            });
+        }
+
+        Ok(ret)
+    }
+
     pub fn get_keys(&self, page: DBPage) -> Result<Vec<DBKey>> {
         const STMT: &str = "
 SELECT
@@ -283,10 +320,18 @@ fn keys() -> Result<()> {
         .get_keys(DBPage::default())
         .context("while getting keys")?;
     assert!(keys.is_empty());
+
+    let keys = db.get_all_keys().context("while getting all keys")?;
+    assert!(keys.is_empty());
+
     let key = DBKey::generate_random_key();
     let ret = db.add_key(key).context("while adding key")?;
 
     let keys = db.get_keys(DBPage::default())?;
+    assert_eq!(keys.len(), 1);
+    assert_eq!(keys[0], ret);
+
+    let keys = db.get_all_keys()?;
     assert_eq!(keys.len(), 1);
     assert_eq!(keys[0], ret);
 
