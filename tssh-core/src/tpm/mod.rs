@@ -17,6 +17,7 @@ use std::str::FromStr;
 
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, digest::Output};
 use ssh_key::Mpint;
 use tss_esapi::{
     attributes::ObjectAttributes,
@@ -79,14 +80,12 @@ impl From<RsaKeyBits> for HashingAlgorithm {
 impl RsaKeyBits {
     fn generate_salted_public_key(&self, a: &[u8], b: &[u8], c: &[u8]) -> Result<PublicKeyRsa> {
         let salt = Salt::new(a, b, c)
-            .take(self.pubclic_key_bytes())
+            .take(self.public_key_bytes())
             .collect::<Vec<u8>>();
-        Ok(PublicKeyRsa::from_bytes(
-            &salt[0..self.pubclic_key_bytes()],
-        )?)
+        Ok(PublicKeyRsa::from_bytes(&salt[0..self.public_key_bytes()])?)
     }
 
-    fn pubclic_key_bytes(&self) -> usize {
+    fn public_key_bytes(&self) -> usize {
         match self {
             RsaKeyBits::Rsa1024 => 128,
             RsaKeyBits::Rsa2048 => 256,
@@ -228,6 +227,13 @@ impl Template {
         match self {
             Template::RSA(rsa_template) => format!("RSA {}", rsa_template.keybits),
             Template::ECC(ecc_template) => format!("ECC,{}", ecc_template.curve),
+        }
+    }
+
+    pub fn signature_size(&self) -> usize {
+        match self {
+            Template::RSA(rsa_template) => rsa_template.keybits.public_key_bytes(),
+            Template::ECC(ecc_template) => ecc_template.curve.point_size() * 2,
         }
     }
 }
@@ -611,7 +617,7 @@ impl TPMContext {
         &mut self,
         public: Public,
         ecc_template: EccTemplate,
-        bloob: &[u8],
+        blob: &[u8],
     ) -> Result<Vec<u8>> {
         self.context.set_sessions((
             Some(tss_esapi::interface_types::session_handles::AuthSession::Password),
@@ -641,7 +647,7 @@ impl TPMContext {
             unreachable!()
         };
 
-        let digest = tss_esapi::structures::Digest::from_bytes(bloob).context("can't digest")?;
+        let digest = tss_esapi::structures::Digest::from_bytes(blob).context("can't digest")?;
 
         let fake_hashcheck = TPMT_TK_HASHCHECK {
             tag: TPM2_ST_HASHCHECK,
@@ -665,6 +671,10 @@ impl TPMContext {
             },
             fake_ticket,
         )?;
+
+        self.context
+            .flush_context(create_primary_result.key_handle.into())
+            .context("while flushing key handle")?;
 
         let Signature::EcDsa(ecc_signature) = sign_result else {
             unreachable!()
@@ -705,7 +715,7 @@ impl TPMContext {
         &mut self,
         public: Public,
         rsa_template: RsaTemplate,
-        bloob: &[u8],
+        blob: &[u8],
     ) -> Result<Vec<u8>> {
         self.context.set_sessions((
             Some(tss_esapi::interface_types::session_handles::AuthSession::Password),
@@ -735,7 +745,7 @@ impl TPMContext {
             unreachable!()
         };
 
-        let digest = tss_esapi::structures::Digest::from_bytes(bloob).context("can't digest")?;
+        let digest = tss_esapi::structures::Digest::from_bytes(blob).context("can't digest")?;
 
         let fake_hashcheck = TPMT_TK_HASHCHECK {
             tag: TPM2_ST_HASHCHECK,
@@ -760,45 +770,50 @@ impl TPMContext {
             fake_ticket,
         )?;
 
+        self.context
+            .flush_context(create_primary_result.key_handle.into())
+            .context("while flushing key handle")?;
+
         let Signature::RsaSsa(rsa_signature) = sign_result else {
             unreachable!()
         };
         Ok(rsa_signature.signature().to_vec())
     }
 
-    pub fn sign(&mut self, host_template: &HostTemplate, bloob: &[u8]) -> Result<Vec<u8>> {
+    pub fn sign(&mut self, host_template: &HostTemplate, blob: &[u8]) -> Result<Vec<u8>> {
         let public = Public::try_from(host_template)?;
 
         match &host_template.template {
-            Template::RSA(rsa_template) => self.sign_rsa(public, rsa_template.clone(), bloob),
-            Template::ECC(ecc_template) => self.sign_ecc(public, ecc_template.clone(), bloob),
+            Template::RSA(rsa_template) => self.sign_rsa(public, rsa_template.clone(), blob),
+            Template::ECC(ecc_template) => self.sign_ecc(public, ecc_template.clone(), blob),
         }
     }
 }
 
-pub struct Salt<'a> {
-    a: std::iter::Cycle<std::slice::Iter<'a, u8>>,
-    b: std::iter::Cycle<std::slice::Iter<'a, u8>>,
-    c: std::iter::Cycle<std::slice::Iter<'a, u8>>,
+pub struct Salt {
+    hash: Output<sha2::Sha512>,
+    idx: usize,
 }
 
-impl<'a> Salt<'a> {
-    fn new(a: &'a [u8], b: &'a [u8], c: &'a [u8]) -> Self {
-        Self {
-            a: a.iter().cycle(),
-            b: b.iter().cycle(),
-            c: c.iter().cycle(),
-        }
+impl Salt {
+    fn new(a: &[u8], b: &[u8], c: &[u8]) -> Self {
+        let mut hasher = sha2::Sha512::new();
+        hasher.update(a);
+        hasher.update(b);
+        hasher.update(c);
+
+        let hash = hasher.finalize();
+
+        Self { hash, idx: 0 }
     }
 }
 
-impl<'a> Iterator for Salt<'a> {
+impl Iterator for Salt {
     type Item = u8;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let next_a = self.a.next().copied().unwrap_or(17u8);
-        let next_b = self.b.next().copied().unwrap_or(23u8);
-        let next_c = self.c.next().copied().unwrap_or(31u8);
-        Some(next_a ^ next_b ^ next_c)
+        let ret = self.hash[self.idx % self.hash.len()];
+        self.idx = self.idx.wrapping_add(1);
+        Some(ret)
     }
 }

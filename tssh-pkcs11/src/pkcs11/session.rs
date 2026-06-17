@@ -16,6 +16,7 @@
 use anyhow::Result;
 use pkcs11_sys::{
     CK_ATTRIBUTE, CK_OBJECT_HANDLE, CK_SESSION_HANDLE, CKA_CLASS, CKA_ID, CKA_LABEL, CKA_SIGN,
+    CKO_PRIVATE_KEY, CKO_PUBLIC_KEY,
 };
 use std::{
     collections::HashMap,
@@ -138,7 +139,7 @@ impl FindObjectsCriteria {
         }
 
         for class in self.classes.iter() {
-            if *class == 2 || *class == 3 {
+            if *class == CKO_PUBLIC_KEY || *class == CKO_PRIVATE_KEY {
                 continue;
             }
             return false;

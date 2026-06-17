@@ -15,13 +15,11 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
     non_snake_case,
-    unused_variables,
     clippy::missing_safety_doc,
     clippy::missing_transmute_annotations
 )]
 
 use std::{
-    io::Write,
     ptr::copy_nonoverlapping,
     sync::{Mutex, MutexGuard, Once, OnceLock},
 };
@@ -37,9 +35,9 @@ use pkcs11_sys::{
     CK_UNAVAILABLE_INFORMATION, CK_USER_TYPE, CK_UTF8CHAR_PTR, CK_VERSION, CK_VOID_PTR,
     CKA_ALWAYS_AUTHENTICATE, CKA_EC_POINT, CKA_ECDSA_PARAMS, CKA_ID, CKA_KEY_TYPE, CKA_LABEL,
     CKA_MODULUS, CKA_PUBLIC_EXPONENT, CKF_HW, CKF_SIGN, CKF_TOKEN_INITIALIZED, CKF_TOKEN_PRESENT,
-    CKF_USER_PIN_INITIALIZED, CKK_EC, CKK_RSA, CKM_ECDSA, CKM_ECDSA_SHA256, CKM_RSA_PKCS,
-    CKR_ARGUMENTS_BAD, CKR_ATTRIBUTE_TYPE_INVALID, CKR_BUFFER_TOO_SMALL, CKR_DEVICE_ERROR,
-    CKR_FUNCTION_NOT_SUPPORTED, CKR_GENERAL_ERROR, CKR_MECHANISM_INVALID, CKR_OK,
+    CKF_USER_PIN_INITIALIZED, CKK_EC, CKK_RSA, CKM_ECDSA, CKM_RSA_PKCS, CKR_ARGUMENTS_BAD,
+    CKR_ATTRIBUTE_TYPE_INVALID, CKR_BUFFER_TOO_SMALL, CKR_DEVICE_ERROR, CKR_FUNCTION_NOT_SUPPORTED,
+    CKR_GENERAL_ERROR, CKR_MECHANISM_INVALID, CKR_OK,
 };
 use tracing_subscriber::EnvFilter;
 
@@ -109,62 +107,56 @@ static FUNCTION_LIST: CK_FUNCTION_LIST = CK_FUNCTION_LIST {
     C_GetTokenInfo: Some(C_GetTokenInfo),
     C_GetMechanismList: Some(C_GetMechanismList),
     C_GetMechanismInfo: Some(C_GetMechanismInfo),
-    C_InitToken: Some(unsafe { std::mem::transmute(C_FunctionNotSupported as *const ()) }),
+    C_InitToken: Some(stub_4),
     C_InitPIN: Some(C_InitPIN),
-    C_SetPIN: Some(unsafe { std::mem::transmute(C_FunctionNotSupported as *const ()) }),
-    C_CloseAllSessions: Some(unsafe { std::mem::transmute(C_FunctionNotSupported as *const ()) }),
+    C_SetPIN: Some(stub_5),
+    C_CloseAllSessions: Some(stub_1),
     C_GetSessionInfo: Some(C_GetSessionInfo),
-    C_GetOperationState: Some(unsafe { std::mem::transmute(C_FunctionNotSupported as *const ()) }),
-    C_SetOperationState: Some(unsafe { std::mem::transmute(C_FunctionNotSupported as *const ()) }),
+    C_GetOperationState: Some(stub_3),
+    C_SetOperationState: Some(stub_5),
     C_Login: Some(C_Login),
-    C_Logout: Some(unsafe { std::mem::transmute(C_FunctionNotSupported as *const ()) }),
-    C_CreateObject: Some(unsafe { std::mem::transmute(C_FunctionNotSupported as *const ()) }),
-    C_CopyObject: Some(unsafe { std::mem::transmute(C_FunctionNotSupported as *const ()) }),
-    C_DestroyObject: Some(unsafe { std::mem::transmute(C_FunctionNotSupported as *const ()) }),
-    C_GetObjectSize: Some(unsafe { std::mem::transmute(C_FunctionNotSupported as *const ()) }),
-    C_SetAttributeValue: Some(unsafe { std::mem::transmute(C_FunctionNotSupported as *const ()) }),
-    C_EncryptInit: Some(unsafe { std::mem::transmute(C_FunctionNotSupported as *const ()) }),
-    C_Encrypt: Some(unsafe { std::mem::transmute(C_FunctionNotSupported as *const ()) }),
-    C_EncryptUpdate: Some(unsafe { std::mem::transmute(C_FunctionNotSupported as *const ()) }),
-    C_EncryptFinal: Some(unsafe { std::mem::transmute(C_FunctionNotSupported as *const ()) }),
-    C_DecryptInit: Some(unsafe { std::mem::transmute(C_FunctionNotSupported as *const ()) }),
-    C_Decrypt: Some(unsafe { std::mem::transmute(C_FunctionNotSupported as *const ()) }),
-    C_DecryptUpdate: Some(unsafe { std::mem::transmute(C_FunctionNotSupported as *const ()) }),
-    C_DecryptFinal: Some(unsafe { std::mem::transmute(C_FunctionNotSupported as *const ()) }),
-    C_DigestInit: Some(unsafe { std::mem::transmute(C_FunctionNotSupported as *const ()) }),
-    C_Digest: Some(unsafe { std::mem::transmute(C_FunctionNotSupported as *const ()) }),
-    C_DigestUpdate: Some(unsafe { std::mem::transmute(C_FunctionNotSupported as *const ()) }),
-    C_DigestKey: Some(unsafe { std::mem::transmute(C_FunctionNotSupported as *const ()) }),
-    C_DigestFinal: Some(unsafe { std::mem::transmute(C_FunctionNotSupported as *const ()) }),
-    C_SignUpdate: Some(unsafe { std::mem::transmute(C_FunctionNotSupported as *const ()) }),
-    C_SignFinal: Some(unsafe { std::mem::transmute(C_FunctionNotSupported as *const ()) }),
-    C_SignRecoverInit: Some(unsafe { std::mem::transmute(C_FunctionNotSupported as *const ()) }),
-    C_SignRecover: Some(unsafe { std::mem::transmute(C_FunctionNotSupported as *const ()) }),
-    C_VerifyInit: Some(unsafe { std::mem::transmute(C_FunctionNotSupported as *const ()) }),
-    C_Verify: Some(unsafe { std::mem::transmute(C_FunctionNotSupported as *const ()) }),
-    C_VerifyUpdate: Some(unsafe { std::mem::transmute(C_FunctionNotSupported as *const ()) }),
-    C_VerifyFinal: Some(unsafe { std::mem::transmute(C_FunctionNotSupported as *const ()) }),
-    C_VerifyRecoverInit: Some(unsafe { std::mem::transmute(C_FunctionNotSupported as *const ()) }),
-    C_VerifyRecover: Some(unsafe { std::mem::transmute(C_FunctionNotSupported as *const ()) }),
-    C_DigestEncryptUpdate: Some(unsafe {
-        std::mem::transmute(C_FunctionNotSupported as *const ())
-    }),
-    C_DecryptDigestUpdate: Some(unsafe {
-        std::mem::transmute(C_FunctionNotSupported as *const ())
-    }),
-    C_SignEncryptUpdate: Some(unsafe { std::mem::transmute(C_FunctionNotSupported as *const ()) }),
-    C_DecryptVerifyUpdate: Some(unsafe {
-        std::mem::transmute(C_FunctionNotSupported as *const ())
-    }),
-    C_GenerateKey: Some(unsafe { std::mem::transmute(C_FunctionNotSupported as *const ()) }),
-    C_GenerateKeyPair: Some(unsafe { std::mem::transmute(C_FunctionNotSupported as *const ()) }),
-    C_WrapKey: Some(unsafe { std::mem::transmute(C_FunctionNotSupported as *const ()) }),
-    C_UnwrapKey: Some(unsafe { std::mem::transmute(C_FunctionNotSupported as *const ()) }),
-    C_DeriveKey: Some(unsafe { std::mem::transmute(C_FunctionNotSupported as *const ()) }),
-    C_SeedRandom: Some(unsafe { std::mem::transmute(C_FunctionNotSupported as *const ()) }),
-    C_GenerateRandom: Some(unsafe { std::mem::transmute(C_FunctionNotSupported as *const ()) }),
-    C_GetFunctionStatus: Some(unsafe { std::mem::transmute(C_FunctionNotSupported as *const ()) }),
-    C_CancelFunction: Some(unsafe { std::mem::transmute(C_FunctionNotSupported as *const ()) }),
+    C_Logout: Some(stub_1),
+    C_CreateObject: Some(stub_4),
+    C_CopyObject: Some(stub_5),
+    C_DestroyObject: Some(stub_2),
+    C_GetObjectSize: Some(stub_3),
+    C_SetAttributeValue: Some(stub_4),
+    C_EncryptInit: Some(stub_3),
+    C_Encrypt: Some(stub_5),
+    C_EncryptUpdate: Some(stub_5),
+    C_EncryptFinal: Some(stub_3),
+    C_DecryptInit: Some(stub_3),
+    C_Decrypt: Some(stub_5),
+    C_DecryptUpdate: Some(stub_5),
+    C_DecryptFinal: Some(stub_3),
+    C_DigestInit: Some(stub_2),
+    C_Digest: Some(stub_5),
+    C_DigestUpdate: Some(stub_3),
+    C_DigestKey: Some(stub_2),
+    C_DigestFinal: Some(stub_3),
+    C_SignUpdate: Some(stub_3),
+    C_SignFinal: Some(stub_3),
+    C_SignRecoverInit: Some(stub_3),
+    C_SignRecover: Some(stub_5),
+    C_VerifyInit: Some(stub_3),
+    C_Verify: Some(stub_5),
+    C_VerifyUpdate: Some(stub_3),
+    C_VerifyFinal: Some(stub_3),
+    C_VerifyRecoverInit: Some(stub_3),
+    C_VerifyRecover: Some(stub_5),
+    C_DigestEncryptUpdate: Some(stub_5),
+    C_DecryptDigestUpdate: Some(stub_5),
+    C_SignEncryptUpdate: Some(stub_5),
+    C_DecryptVerifyUpdate: Some(stub_5),
+    C_GenerateKey: Some(stub_5),
+    C_GenerateKeyPair: Some(stub_8),
+    C_WrapKey: Some(stub_6),
+    C_UnwrapKey: Some(stub_8),
+    C_DeriveKey: Some(stub_6),
+    C_SeedRandom: Some(stub_3),
+    C_GenerateRandom: Some(stub_3),
+    C_GetFunctionStatus: Some(stub_1),
+    C_CancelFunction: Some(stub_1),
     C_WaitForSlotEvent: Some(C_WaitForSlotEvent),
 };
 
@@ -192,9 +184,8 @@ pub unsafe extern "C" fn C_Initialize(_pInitArgs: CK_VOID_PTR) -> CK_RV {
 
 #[named]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn C_Finalize(p_reserved: CK_VOID_PTR) -> CK_RV {
+pub unsafe extern "C" fn C_Finalize(_p_reserved: CK_VOID_PTR) -> CK_RV {
     trace!("{} called", function_name!());
-    let _ = std::io::stdout().flush();
 
     CKR_OK
 }
@@ -240,7 +231,7 @@ pub unsafe extern "C" fn C_CloseSession(h_session: CK_SESSION_HANDLE) -> CK_RV {
 #[named]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn C_GetSlotList(
-    token_present: CK_BBOOL,
+    _token_present: CK_BBOOL,
     pSlotList: CK_SLOT_ID_PTR,
     pulCount: CK_ULONG_PTR,
 ) -> CK_RV {
@@ -318,11 +309,6 @@ pub unsafe extern "C" fn C_FindObjectsInit(
 ) -> CK_RV {
     trace!("{} called with sessionId {h_session}", function_name!());
 
-    let Ok(session) = session::get_sessions().get_state(h_session) else {
-        error!("there is no session with id {h_session}");
-        return CKR_ARGUMENTS_BAD;
-    };
-
     let session_state = unsafe {
         let attributes = std::slice::from_raw_parts(p_template, ul_count as usize);
         State::FindObjectsInit(FindObjectsInit::new(attributes))
@@ -337,7 +323,7 @@ pub unsafe extern "C" fn C_FindObjectsInit(
 
 fn load_objects(find_objects: &mut FindObjects) -> Result<()> {
     let result = get_db()
-        .get_keys(tssh_core::sqlite::types::DBPage::default())? //TODO: more results than default page...
+        .get_all_keys()?
         .into_iter()
         .filter(|k| find_objects.criteria.has(k))
         .collect::<Vec<DBKey>>();
@@ -402,7 +388,7 @@ pub unsafe extern "C" fn C_FindObjects(
 
         let out = unsafe { std::slice::from_raw_parts_mut(phObject, amount_to_write) };
 
-        for (i, v) in out.iter_mut().enumerate() {
+        for v in out.iter_mut() {
             *v = results.get(*next_index).unwrap().id as u64;
             *next_index += 1;
             unsafe { *pulObjectCount += 1 }
@@ -776,7 +762,7 @@ pub unsafe extern "C" fn C_GetMechanismList(
 ) -> CK_RV {
     trace!("{} called with slot_id {slot_id}", function_name!());
 
-    const SUPPORTED_MECHANISMS: [CK_ULONG; 1] = [CKM_ECDSA_SHA256];
+    const SUPPORTED_MECHANISMS: [CK_ULONG; 2] = [CKM_ECDSA, CKM_RSA_PKCS];
 
     if pul_count.is_null() {
         return CKR_ARGUMENTS_BAD;
@@ -829,8 +815,10 @@ pub unsafe extern "C" fn C_GetMechanismInfo(
 
     trace!("asking for type {type_}");
 
-    if type_ != CKM_ECDSA_SHA256 {
-        error!("only type {CKM_ECDSA_SHA256} is supported but asked for type {type_}");
+    const SUPPORTED_TYPES: [u64; 2] = [CKM_ECDSA, CKM_RSA_PKCS];
+
+    if !SUPPORTED_TYPES.contains(&type_) {
+        error!("only types {SUPPORTED_TYPES:?} is supported but asked for type {type_}");
         return CKR_MECHANISM_INVALID;
     }
 
@@ -923,13 +911,13 @@ pub unsafe extern "C" fn C_SignInit(
     let mechanism = unsafe { *p_mechanism };
 
     match template {
-        Template::RSA(rsa_template) => {
+        Template::RSA(_) => {
             if mechanism.mechanism != CKM_RSA_PKCS {
                 error!("requested invalid mechanism {}", mechanism.mechanism);
                 return CKR_MECHANISM_INVALID;
             }
         }
-        Template::ECC(_ecc_template) => {
+        Template::ECC(_) => {
             if mechanism.mechanism != CKM_ECDSA {
                 error!("requested invalid mechanism {}", mechanism.mechanism);
                 return CKR_MECHANISM_INVALID;
@@ -996,6 +984,11 @@ pub unsafe extern "C" fn C_Sign(
         return CKR_GENERAL_ERROR;
     };
 
+    if pSignature.is_null() {
+        unsafe { *pulSignatureLen = template.template.signature_size() as u64 };
+        return CKR_OK;
+    }
+
     let mut tpm = get_tpm();
 
     let data_to_sign = match prepare_data_for_signing(template.template.clone(), data) {
@@ -1014,15 +1007,10 @@ pub unsafe extern "C" fn C_Sign(
         }
     };
 
-    let Ok(der_sig) = parse_tpm_sign(template.template, &raw_tpm_sig) else {
+    let Ok(der_sig) = parse_tpm_sign(&template.template, &raw_tpm_sig) else {
         error!("can't parse raw tpm signature");
         return CKR_DEVICE_ERROR;
     };
-
-    if pSignature.is_null() {
-        unsafe { *pulSignatureLen = der_sig.len() as u64 };
-        return CKR_OK;
-    }
 
     let provided_len = unsafe { *pulSignatureLen } as usize;
     if provided_len < der_sig.len() {
@@ -1124,13 +1112,13 @@ fn prepare_data_for_signing(template: Template, data: &[u8]) -> anyhow::Result<V
         }
         tpm::RsaKeyBits::Rsa3072 => {
             if data.len() != 51 {
-                bail!("expected 67 signing bytes")
+                bail!("expected 51 signing bytes")
             }
             Ok(data[19..].to_vec())
         }
         tpm::RsaKeyBits::Rsa4096 => {
             if data.len() != 83 {
-                bail!("expected 67 signing bytes")
+                bail!("expected 83 signing bytes")
             }
             Ok(data[19..].to_vec())
         }
@@ -1139,7 +1127,7 @@ fn prepare_data_for_signing(template: Template, data: &[u8]) -> anyhow::Result<V
 
 //TODO: I guess we could use anyhow because we don't export
 fn parse_tpm_sign(
-    template: Template,
+    template: &Template,
     signature: &[u8],
 ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     match template {
@@ -1149,7 +1137,7 @@ fn parse_tpm_sign(
 }
 
 fn parse_tpm_ecc_sign(
-    ecc_template: EccTemplate,
+    ecc_template: &EccTemplate,
     signature: &[u8],
 ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     match ecc_template.curve {
@@ -1160,7 +1148,7 @@ fn parse_tpm_ecc_sign(
 }
 
 fn parse_tpm_rsa_sign(
-    rsa_template: RsaTemplate,
+    _rsa_template: &RsaTemplate,
     signature: &[u8],
 ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     Ok(signature.to_vec())
@@ -1168,4 +1156,40 @@ fn parse_tpm_rsa_sign(
 
 fn get_key_from_db(handle: CK_OBJECT_HANDLE) -> Result<DBKey> {
     get_db().get_key_by_id(handle as i32)
+}
+
+unsafe extern "C" fn stub_1<A>(_: A) -> CK_RV {
+    CKR_FUNCTION_NOT_SUPPORTED
+}
+
+unsafe extern "C" fn stub_2<A, B>(_: A, _: B) -> CK_RV {
+    CKR_FUNCTION_NOT_SUPPORTED
+}
+unsafe extern "C" fn stub_3<A, B, C>(_: A, _: B, _: C) -> CK_RV {
+    CKR_FUNCTION_NOT_SUPPORTED
+}
+
+unsafe extern "C" fn stub_4<A, B, C, D>(_: A, _: B, _: C, _: D) -> CK_RV {
+    CKR_FUNCTION_NOT_SUPPORTED
+}
+
+unsafe extern "C" fn stub_5<A, B, C, D, E>(_: A, _: B, _: C, _: D, _: E) -> CK_RV {
+    CKR_FUNCTION_NOT_SUPPORTED
+}
+
+unsafe extern "C" fn stub_6<A, B, C, D, E, F>(_: A, _: B, _: C, _: D, _: E, _: F) -> CK_RV {
+    CKR_FUNCTION_NOT_SUPPORTED
+}
+
+unsafe extern "C" fn stub_8<A, B, C, D, E, F, G, H>(
+    _: A,
+    _: B,
+    _: C,
+    _: D,
+    _: E,
+    _: F,
+    _: G,
+    _: H,
+) -> CK_RV {
+    CKR_FUNCTION_NOT_SUPPORTED
 }

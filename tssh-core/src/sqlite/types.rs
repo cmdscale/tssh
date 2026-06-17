@@ -105,6 +105,10 @@ pub struct DBPage {
 }
 
 impl DBPage {
+    pub fn new(page: u32, size: u32) -> Self {
+        Self { page, size }
+    }
+
     pub fn offset(&self) -> u32 {
         self.page * self.size
     }
