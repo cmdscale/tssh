@@ -31,7 +31,7 @@ use tss_esapi::{
     tss2_esys::TPMT_TK_HASHCHECK,
 };
 
-use crate::sqlite::types::DBKey;
+use crate::{external_seed::instance_from_db_entity, sqlite::types::DBKeySeedTuple};
 
 #[derive(Serialize, Deserialize, Clone)]
 pub enum Template {
@@ -78,13 +78,10 @@ impl From<RsaKeyBits> for HashingAlgorithm {
 }
 
 impl RsaKeyBits {
-    fn generate_salted_public_key(&self, a: &[u8], b: &[u8], c: &[u8]) -> Result<PublicKeyRsa> {
-        let salt = Salt::new(a, b, c)
-            .take(self.public_key_bytes())
-            .collect::<Vec<u8>>();
+    fn generate_salted_public_key_v2(&self, salt: Salt) -> Result<PublicKeyRsa> {
+        let salt = salt.take(self.public_key_bytes()).collect::<Vec<u8>>();
         Ok(PublicKeyRsa::from_bytes(&salt[0..self.public_key_bytes()])?)
     }
-
     fn public_key_bytes(&self) -> usize {
         match self {
             RsaKeyBits::Rsa1024 => 128,
@@ -145,15 +142,16 @@ impl TryFrom<tss_esapi::interface_types::ecc::EccCurve> for ECCCurve {
 }
 
 impl ECCCurve {
-    fn generate_salted_point(&self, a: &[u8], b: &[u8], c: &[u8]) -> Result<EccPoint> {
+    fn generate_salted_point_v2(&self, salt: Salt) -> Result<EccPoint> {
         let point_size = self.point_size();
-        let salt = Salt::new(a, b, c).take(2 * point_size).collect::<Vec<u8>>();
+        let s = salt.take(2 * point_size).collect::<Vec<u8>>();
 
         Ok(EccPoint::new(
-            EccParameter::from_bytes(&salt[0..point_size])?,
-            EccParameter::from_bytes(&salt[point_size..2 * point_size])?,
+            EccParameter::from_bytes(&s[0..point_size])?,
+            EccParameter::from_bytes(&s[point_size..2 * point_size])?,
         ))
     }
+
     fn point_size(&self) -> usize {
         match self {
             ECCCurve::NistP256 => 32,
@@ -251,6 +249,7 @@ pub struct HostTemplate {
     pub user: String,
     pub host: String,
     pub port: u16,
+    pub seed: Option<Vec<u8>>,
 }
 
 impl HostTemplate {
@@ -261,11 +260,22 @@ impl HostTemplate {
             user: "".to_string(),
             port: 22,
             template: Template::ecc_default(),
+            seed: None,
         }
     }
 
     pub fn with_host(mut self, host: &str) -> Self {
         self.host = host.to_string();
+        self
+    }
+
+    pub fn with_seed(mut self, seed: &[u8]) -> Self {
+        self.seed = Some(seed.to_vec());
+        self
+    }
+
+    pub fn with_optional_seed(mut self, seed: Option<Vec<u8>>) -> Self {
+        self.seed = seed;
         self
     }
 
@@ -285,18 +295,25 @@ impl HostTemplate {
     }
 }
 
-impl TryFrom<&DBKey> for HostTemplate {
+impl TryFrom<&DBKeySeedTuple> for HostTemplate {
     type Error = anyhow::Error;
 
-    fn try_from(value: &DBKey) -> std::prelude::v1::Result<Self, Self::Error> {
-        let template =
-            serde_json::from_str::<Template>(&value.template).context("while parsing template")?;
+    fn try_from(value: &DBKeySeedTuple) -> std::prelude::v1::Result<Self, Self::Error> {
+        let template = serde_json::from_str::<Template>(&value.key.template)
+            .context("while parsing template")?;
+
+        let mut seed = None;
+
+        if let Some(external_seed) = &value.external_seed {
+            seed = Some(instance_from_db_entity(external_seed)?.seed()?);
+        }
 
         Ok(Self {
             template,
-            user: value.username.clone(),
-            host: value.host.clone(),
-            port: value.port,
+            user: value.key.username.clone(),
+            host: value.key.host.clone(),
+            port: value.key.port,
+            seed,
         })
     }
 }
@@ -304,6 +321,16 @@ impl TryFrom<&DBKey> for HostTemplate {
 impl TryFrom<&HostTemplate> for Public {
     type Error = anyhow::Error;
     fn try_from(host_template: &HostTemplate) -> Result<Self, Self::Error> {
+        let mut salt_input = vec![
+            host_template.user.as_bytes().to_vec(),
+            host_template.host.as_bytes().to_vec(),
+            host_template.port.to_le_bytes().as_slice().to_vec(),
+        ];
+        if let Some(seed) = &host_template.seed {
+            salt_input.push(seed.clone());
+        }
+        let salt = Salt::new(salt_input);
+
         let object_attributes = ObjectAttributes::builder()
             .with_fixed_tpm(true)
             .with_fixed_parent(true)
@@ -335,11 +362,12 @@ impl TryFrom<&HostTemplate> for Public {
 
                 let salted_point = ecc_template
                     .curve
-                    .generate_salted_point(
-                        host_template.host.as_bytes(),
-                        host_template.user.as_bytes(),
-                        &host_template.port.to_le_bytes(),
-                    )
+                    //.generate_salted_point(
+                    //    host_template.host.as_bytes(),
+                    //    host_template.user.as_bytes(),
+                    //    &host_template.port.to_le_bytes(),
+                    //)
+                    .generate_salted_point_v2(salt)
                     .context("while constructing salted point")?;
 
                 builder = builder
@@ -376,11 +404,7 @@ impl TryFrom<&HostTemplate> for Public {
                     .with_rsa_unique_identifier(
                         rsa_template
                             .keybits
-                            .generate_salted_public_key(
-                                host_template.host.as_bytes(),
-                                host_template.user.as_bytes(),
-                                &host_template.port.to_le_bytes(),
-                            )
+                            .generate_salted_public_key_v2(salt)
                             .context("while constructing salted public key")?,
                     )
             }
@@ -796,13 +820,16 @@ pub struct Salt {
 }
 
 impl Salt {
-    fn new(a: &[u8], b: &[u8], c: &[u8]) -> Self {
+    pub fn new<I, T>(args: I) -> Self
+    where
+        I: IntoIterator<Item = T>,
+        T: AsRef<[u8]>,
+    {
         let mut hasher = sha2::Sha512::new();
-        hasher.update(a.len().to_be_bytes());
-        hasher.update(a);
-        hasher.update(b.len().to_be_bytes());
-        hasher.update(b);
-        hasher.update(c);
+        for i in args {
+            hasher.update(i.as_ref().len().to_be_bytes());
+            hasher.update(i.as_ref());
+        }
 
         let hash = hasher.finalize();
 

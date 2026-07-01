@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use clap::Parser;
 use comfy_table::presets::UTF8_FULL;
 use comfy_table::{Cell, Table};
@@ -22,7 +22,8 @@ use std::env;
 use std::io::Write;
 use std::os::unix::fs::OpenOptionsExt;
 use std::{fs::OpenOptions, path::PathBuf};
-use tssh_core::sqlite::types::DBDefaults;
+use tssh_core::external_seed::{self, instance_from_db_entity};
+use tssh_core::sqlite::types::{DBDefaults, DBExternalSeed};
 use tssh_core::sqlite::{
     DB,
     types::{DBKey, DBPage},
@@ -31,6 +32,8 @@ use tssh_core::tpm::{ECCCurve, RsaKeyBits, Template};
 use xxhash_rust::xxh3::xxh3_64;
 
 use rand::{RngExt, distr::Alphanumeric};
+
+use crate::commandline::List;
 mod commandline;
 mod ssh_writer;
 
@@ -59,12 +62,63 @@ fn main() -> anyhow::Result<()> {
         commandline::Commands::Include(i) => handle_include(db, i),
         commandline::Commands::Check => handle_check(db),
         commandline::Commands::Delete(delete_key) => handle_delete(db, delete_key),
+        commandline::Commands::AddSeed(external_seed) => handle_add_seed(db, external_seed),
+        commandline::Commands::ListSeeds(list) => handle_list_seeds(db, list),
+        commandline::Commands::PopulateSeed { id } => handle_populate_seed(db, id),
     }
+}
+
+fn handle_populate_seed(db: DB, id: i32) -> Result<()> {
+    instance_from_db_entity(&db.get_external_seed_by_id(id)?)?.populate()
+}
+
+fn handle_list_seeds(db: DB, list: List) -> Result<()> {
+    let seeds = db.get_external_seeds(DBPage::new(list.page, list.size))?;
+
+    let mut table = Table::new();
+
+    table
+        .load_preset(UTF8_FULL)
+        .set_content_arrangement(comfy_table::ContentArrangement::DynamicFullWidth)
+        .set_header(vec![
+            Cell::new("Id").set_alignment(comfy_table::CellAlignment::Center),
+            Cell::new("Name").set_alignment(comfy_table::CellAlignment::Center),
+            Cell::new("Type").set_alignment(comfy_table::CellAlignment::Center),
+            Cell::new("Populated").set_alignment(comfy_table::CellAlignment::Center),
+        ]);
+
+    for k in seeds {
+        let conf = external_seed::SeedConfig::try_from(k.config.as_str())?;
+        let is_populated = conf.check(&k.name)?;
+
+        table.add_row(vec![
+            Cell::new(format!("{}", k.id)).set_alignment(comfy_table::CellAlignment::Center),
+            Cell::new(k.name.to_string()).set_alignment(comfy_table::CellAlignment::Center),
+            Cell::new(conf.get_type_string().to_string())
+                .set_alignment(comfy_table::CellAlignment::Center),
+            Cell::new(format!("{}", is_populated))
+                .set_alignment(comfy_table::CellAlignment::Center),
+        ]);
+    }
+    println!("{table}");
+    Ok(())
+}
+
+fn handle_add_seed(db: DB, seed: commandline::ExternalSeed) -> Result<()> {
+    let conf = external_seed::SeedConfig::from(seed.seed_type).serialze()?;
+
+    db.add_external_seed(
+        DBExternalSeed::default()
+            .with_name(seed.name)
+            .with_config(conf),
+    )?;
+
+    Ok(())
 }
 
 fn handle_delete(db: DB, delete_key: commandline::DeleteKey) -> Result<()> {
     let ret = match &delete_key.id {
-        commandline::Identifier::Id(id) => db.delete_id(*id),
+        commandline::Identifier::Id(id) => db.delete_key_by_id(*id),
         commandline::Identifier::User(user) => {
             db.delete_login(&user.host, &user.username, user.port)
         }
@@ -122,11 +176,52 @@ fn handle_include(_db: DB, i: commandline::Include) -> Result<()> {
 }
 
 fn handle_sync(db: DB) -> Result<()> {
-    let entries = db.get_all_keys()?; //TODO: all keys..
+    let entries = db.get_all_tuples()?;
     ssh_writer::write(entries, &ensure_dir_env()?)
 }
 
 fn handle_add(db: DB, add_key: commandline::AddKey) -> Result<()> {
+    //TODO: better parsing
+
+    let (seed_id, seed) = match add_key.seed_mode() {
+        commandline::SeedMode::None => (None, None),
+        commandline::SeedMode::AnyIfPresent => {
+            let external_seeds = db.get_external_seeds(DBPage::default().with_size(1))?;
+            if external_seeds.is_empty() {
+                (None, None)
+            } else {
+                let seed = instance_from_db_entity(&external_seeds[0])?;
+                if !seed.check()? {
+                    seed.populate()?;
+                }
+                (Some(external_seeds[0].id), Some(seed.seed()?))
+            }
+        }
+        commandline::SeedMode::Any => {
+            let external_seeds = db.get_external_seeds(DBPage::default().with_size(1))?;
+            if external_seeds.is_empty() {
+                bail!("There is no external seed configured")
+            } else {
+                let seed = instance_from_db_entity(&external_seeds[0])?;
+                if !seed.check()? {
+                    seed.populate()?;
+                }
+                (Some(external_seeds[0].id), Some(seed.seed()?))
+            }
+        }
+        commandline::SeedMode::Id { id } => {
+            let seed = instance_from_db_entity(
+                &db.get_external_seed_by_id(id)
+                    .context("while getting seed")?,
+            )?;
+
+            if !seed.check()? {
+                seed.populate()?;
+            }
+            (Some(id), Some(seed.seed()?))
+        }
+    };
+
     let mut tpm = tssh_core::tpm::TPMContext::new_default()?;
     let template_defaults = ensure_defaults(&mut tpm, &db)?;
 
@@ -149,12 +244,14 @@ fn handle_add(db: DB, add_key: commandline::AddKey) -> Result<()> {
         .with_host(&add_key.user.host)
         .with_user(&add_key.user.username)
         .with_port(add_key.user.port)
+        .with_optional_seed(seed)
         .with_template(template);
 
     let key = tpm.get_primary_key(&host_template)?;
     db.add_key(DBKey {
         id: 0,
         backup_key: None,
+        external_seed: seed_id,
         pkcs11_id: rand::rng()
             .sample_iter(Alphanumeric)
             .take(13)

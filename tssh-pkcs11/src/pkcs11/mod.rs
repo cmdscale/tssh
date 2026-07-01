@@ -44,7 +44,7 @@ use tracing_subscriber::EnvFilter;
 use tracing::{debug, error, trace, warn};
 
 use tssh_core::{
-    sqlite::types::DBKey,
+    sqlite::types::{DBKey, DBKeySeedTuple},
     tpm::{self, EccTemplate, RsaTemplate, Template},
 };
 
@@ -434,7 +434,7 @@ pub unsafe extern "C" fn C_GetAttributeValue(
         function_name!()
     );
 
-    let key = match get_key_from_db(h_object) {
+    let key = match get_key_tuple_from_db(h_object) {
         Ok(key) => key,
         Err(e) => {
             error!("error while getting handle {h_object} for session {h_session}: {e}");
@@ -461,11 +461,11 @@ pub unsafe extern "C" fn C_GetAttributeValue(
 
                 if attr.pValue.is_null() {
                     debug!("CKA ID size request");
-                    attr.ulValueLen = key.pkcs11_id.len() as u64;
+                    attr.ulValueLen = key.key.pkcs11_id.len() as u64;
                     continue;
                 }
 
-                if attr.ulValueLen < key.pkcs11_id.len() as u64 {
+                if attr.ulValueLen < key.key.pkcs11_id.len() as u64 {
                     warn!("Buffer to small in CKA ID");
                     attr.ulValueLen = CK_UNAVAILABLE_INFORMATION;
                     global_return = CKR_BUFFER_TOO_SMALL;
@@ -473,17 +473,17 @@ pub unsafe extern "C" fn C_GetAttributeValue(
                 }
                 trace!(
                     "Returnin CK_ID={} len={}",
-                    key.pkcs11_id,
-                    key.pkcs11_id.len()
+                    key.key.pkcs11_id,
+                    key.key.pkcs11_id.len()
                 );
                 unsafe {
                     std::ptr::copy_nonoverlapping(
-                        key.pkcs11_id.as_ptr(),
+                        key.key.pkcs11_id.as_ptr(),
                         attr.pValue as *mut u8,
-                        key.pkcs11_id.len(),
+                        key.key.pkcs11_id.len(),
                     );
                 }
-                attr.ulValueLen = key.pkcs11_id.len() as u64;
+                attr.ulValueLen = key.key.pkcs11_id.len() as u64;
             }
             CKA_ECDSA_PARAMS => {
                 trace!("{i} call asking for CKA_ECDSA_PARAMS for object {h_object}");
@@ -580,11 +580,11 @@ pub unsafe extern "C" fn C_GetAttributeValue(
 
                 if attr.pValue.is_null() {
                     debug!("CKA LABEL size request");
-                    attr.ulValueLen = key.pkcs11_id.len() as u64;
+                    attr.ulValueLen = key.key.pkcs11_id.len() as u64;
                     continue;
                 }
 
-                if attr.ulValueLen < key.pkcs11_id.len() as u64 {
+                if attr.ulValueLen < key.key.pkcs11_id.len() as u64 {
                     warn!("Buffer to small in CKA_LABEL");
                     attr.ulValueLen = CK_UNAVAILABLE_INFORMATION;
                     global_return = CKR_BUFFER_TOO_SMALL;
@@ -593,16 +593,16 @@ pub unsafe extern "C" fn C_GetAttributeValue(
 
                 unsafe {
                     std::ptr::copy_nonoverlapping(
-                        key.pkcs11_id.as_ptr(),
+                        key.key.pkcs11_id.as_ptr(),
                         attr.pValue as *mut u8,
-                        key.pkcs11_id.len(),
+                        key.key.pkcs11_id.len(),
                     );
-                    attr.ulValueLen = key.pkcs11_id.len() as u64;
+                    attr.ulValueLen = key.key.pkcs11_id.len() as u64;
                 }
                 trace!(
                     "Returnin CK_LABEL={} len={}",
-                    key.pkcs11_id,
-                    key.pkcs11_id.len()
+                    key.key.pkcs11_id,
+                    key.key.pkcs11_id.len()
                 );
             }
             CKA_PUBLIC_EXPONENT => {
@@ -892,7 +892,7 @@ pub unsafe extern "C" fn C_SignInit(
         return CKR_ARGUMENTS_BAD;
     }
 
-    let key = match get_key_from_db(h_key) {
+    let key_tuple = match get_key_tuple_from_db(h_key) {
         Ok(k) => k,
         Err(e) => {
             error!("while getting key with id {h_key} from db: {e}");
@@ -900,7 +900,7 @@ pub unsafe extern "C" fn C_SignInit(
         }
     };
 
-    let template = match Template::try_from(key.template.as_str()) {
+    let template = match Template::try_from(key_tuple.key.template.as_str()) {
         Ok(t) => t,
         Err(e) => {
             error!("while parsing template of key with id {h_key}: {e}");
@@ -965,7 +965,7 @@ pub unsafe extern "C" fn C_Sign(
         return CKR_GENERAL_ERROR;
     };
 
-    let key = match get_key_from_db(signinit.object_handle) {
+    let key_tuple = match get_key_tuple_from_db(signinit.object_handle) {
         Ok(key) => key,
         Err(e) => {
             error!(
@@ -979,7 +979,7 @@ pub unsafe extern "C" fn C_Sign(
     let data = unsafe { std::slice::from_raw_parts(pData, ulDataLen as usize) };
     trace!("C_Sign: signing {} bytes using TPM", ulDataLen);
 
-    let Ok(template) = tssh_core::tpm::HostTemplate::try_from(&key) else {
+    let Ok(template) = tssh_core::tpm::HostTemplate::try_from(&key_tuple) else {
         error!("can't construct host template");
         return CKR_GENERAL_ERROR;
     };
@@ -1154,8 +1154,8 @@ fn parse_tpm_rsa_sign(
     Ok(signature.to_vec())
 }
 
-fn get_key_from_db(handle: CK_OBJECT_HANDLE) -> Result<DBKey> {
-    get_db().get_key_by_id(handle as i32)
+fn get_key_tuple_from_db(handle: CK_OBJECT_HANDLE) -> Result<DBKeySeedTuple> {
+    get_db().get_key_tuple_by_id(handle as i32)
 }
 
 unsafe extern "C" fn stub_1<A>(_: A) -> CK_RV {

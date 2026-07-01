@@ -14,9 +14,11 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 use anyhow::Result;
+
 #[derive(Debug, PartialEq, PartialOrd, Clone)]
 pub struct DBKey {
     pub id: i32,
+    pub external_seed: Option<i32>,
     pub backup_key: Option<i32>,
     pub pkcs11_id: String,
     pub username: String,
@@ -30,6 +32,10 @@ impl DBKey {
     pub fn validate(&self) -> Result<()> {
         Ok(())
     }
+    pub fn with_external_seed(mut self, id: i32) -> Self {
+        self.external_seed = Some(id);
+        self
+    }
 }
 
 #[cfg(test)]
@@ -38,6 +44,7 @@ impl DBKey {
         use rand::{RngExt, distr::Alphanumeric};
         Self {
             id: rand::random_range(0..1111),
+            external_seed: None,
             backup_key: None,
             pkcs11_id: rand::rng()
                 .sample_iter(Alphanumeric)
@@ -98,6 +105,53 @@ impl DBDefaults {
         }
     }
 }
+#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Default)]
+pub struct DBExternalSeed {
+    pub id: i32,
+    pub name: String,
+    pub config: String,
+}
+
+impl DBExternalSeed {
+    pub fn validate(&self) -> Result<()> {
+        Ok(())
+    }
+
+    pub fn with_name(mut self, name: String) -> Self {
+        self.name = name;
+        self
+    }
+
+    pub fn with_config(mut self, config: String) -> Self {
+        self.config = config;
+        self
+    }
+}
+
+#[cfg(test)]
+impl DBExternalSeed {
+    pub fn generate_random() -> Self {
+        use rand::{RngExt, distr::Alphanumeric};
+        Self {
+            id: rand::random_range(0..1111),
+            name: rand::rng()
+                .sample_iter(Alphanumeric)
+                .take(13)
+                .map(char::from)
+                .collect(),
+            config: rand::rng()
+                .sample_iter(Alphanumeric)
+                .take(13)
+                .map(char::from)
+                .collect(),
+        }
+    }
+}
+
+pub struct DBKeySeedTuple {
+    pub key: DBKey,
+    pub external_seed: Option<DBExternalSeed>,
+}
 
 pub struct DBPage {
     pub page: u32,
@@ -115,6 +169,11 @@ impl DBPage {
 
     pub fn limit(&self) -> u32 {
         self.size
+    }
+
+    pub fn with_size(mut self, size: u32) -> Self {
+        self.size = size;
+        self
     }
 }
 

@@ -25,6 +25,7 @@ testers.nixosTest {
       security.tpm2.pkcs11.enable = true;
       security.tpm2.tctiEnvironment.enable = true;
       virtualisation.tpm.enable = true;
+      environment.systemPackages=[ pkgs.keyutils ];
 
     };
 
@@ -66,6 +67,33 @@ testers.nixosTest {
 
       for case in test_cases:
           device.succeed(f"${pkgs.tssh}/bin/tssh add root@ssh_host --kind {case}")
+          pub_key=device.succeed("${pkgs.tssh}/bin/tssh get --raw root@ssh_host")
+          ssh_host.succeed(f"echo '{pub_key}' > /root/.ssh/authorized_keys")
+          device.succeed(ssh_command)
+          device.succeed("${pkgs.tssh}/bin/tssh delete root@ssh_host")
+
+
+      # now test with file external seed 
+     
+      device.succeed("${pkgs.tssh}/bin/tssh add-seed alpha file /etc/passwd")
+
+      for case in test_cases:
+          device.succeed(f"${pkgs.tssh}/bin/tssh add root@ssh_host --kind {case} id 1")
+          pub_key=device.succeed("${pkgs.tssh}/bin/tssh get --raw root@ssh_host")
+          ssh_host.succeed(f"echo '{pub_key}' > /root/.ssh/authorized_keys")
+          device.succeed(ssh_command)
+          device.succeed("${pkgs.tssh}/bin/tssh delete root@ssh_host")
+
+
+      # now test with file key utils
+
+      device.succeed("${pkgs.tssh}/bin/tssh add-seed bertha key-utils")
+      # we populate it externally
+      device.succeed("keyctl add user bertha 'geheim' @u ")
+      device.succeed("keyctl link @u @s ")
+
+      for case in test_cases:
+          device.succeed(f"${pkgs.tssh}/bin/tssh add root@ssh_host --kind {case} id 2")
           pub_key=device.succeed("${pkgs.tssh}/bin/tssh get --raw root@ssh_host")
           ssh_host.succeed(f"echo '{pub_key}' > /root/.ssh/authorized_keys")
           device.succeed(ssh_command)

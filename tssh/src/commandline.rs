@@ -17,7 +17,10 @@ use std::{fmt::Display, str::FromStr};
 
 use anyhow::{Ok, bail};
 use clap::{Args, Parser, Subcommand};
-use tssh_core::tpm;
+use tssh_core::{
+    external_seed::{file::FileSeedConf, key_utils::KeyUtilsConf},
+    tpm,
+};
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -37,6 +40,34 @@ pub enum Commands {
     Clear,
     Include(Include),
     Check,
+    AddSeed(ExternalSeed),
+    ListSeeds(List),
+    PopulateSeed { id: i32 },
+}
+
+#[derive(Args, Debug)]
+pub struct ExternalSeed {
+    pub name: String,
+    #[command(subcommand)]
+    pub seed_type: SeedType,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum SeedType {
+    KeyUtils,
+    File { path: String },
+}
+
+impl From<SeedType> for tssh_core::external_seed::SeedConfig {
+    fn from(value: SeedType) -> Self {
+        match value {
+            #[cfg(target_os = "linux")]
+            SeedType::KeyUtils => tssh_core::external_seed::SeedConfig::KeyUtils(KeyUtilsConf {}),
+            SeedType::File { path } => {
+                tssh_core::external_seed::SeedConfig::File(FileSeedConf { path })
+            }
+        }
+    }
 }
 
 #[derive(Args, Debug)]
@@ -65,6 +96,23 @@ pub struct AddKey {
     pub kind: Kind,
     #[arg(long)]
     pub key_name: Option<String>,
+
+    #[command(subcommand)]
+    pub seed_mode: Option<SeedMode>,
+}
+
+impl AddKey {
+    pub fn seed_mode(&self) -> SeedMode {
+        self.seed_mode.clone().unwrap_or(SeedMode::AnyIfPresent)
+    }
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum SeedMode {
+    None,
+    AnyIfPresent,
+    Any,
+    Id { id: i32 },
 }
 
 #[derive(Args, Debug)]
@@ -139,6 +187,7 @@ impl FromStr for Identifier {
         })?))
     }
 }
+
 #[derive(Debug, Clone, Copy)]
 pub enum Kind {
     DefaultRsa,

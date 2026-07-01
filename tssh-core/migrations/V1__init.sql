@@ -7,6 +7,7 @@ template TEXT NOT NULL
 CREATE TABLE Keys(
 id INTEGER PRIMARY KEY AUTOINCREMENT,
 backup_key_id INTEGER,
+external_seed_id INTEGER,
 pkcs11_id VARCHAR(256) NOT NULL UNIQUE,
 host VARCHAR(256) NOT NULL,
 username VARCHAR(256) NOT NULL,
@@ -14,7 +15,14 @@ port INTEGER NOT NULL,
 pub_key VARCHAR(2056) NOT NULL,
 template TEXT NOT NULL,
 UNIQUE(host,username,port),
-FOREIGN KEY(backup_key_id) REFERENCES BackupKeys(id)
+FOREIGN KEY(backup_key_id) REFERENCES BackupKeys(id),
+FOREIGN KEY(external_seed_id) REFERENCES ExternalSeeds(id) ON DELETE RESTRICT
+);
+
+CREATE TABLE ExternalSeeds(
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+name VARCHAR(256) NOT NULL UNIQUE,
+config TEXT NOT NULL
 );
 
 CREATE TABLE Defaults(

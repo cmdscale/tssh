@@ -19,7 +19,7 @@ use std::{fs::OpenOptions, io::Write};
 
 use anyhow::{Context, Result};
 
-use tssh_core::sqlite::types::DBKey;
+use tssh_core::sqlite::types::DBKeySeedTuple;
 use tssh_core::tpm::HostTemplate;
 
 pub struct DirEnv {
@@ -51,12 +51,14 @@ impl FileEntry {
     }
 }
 
-impl TryFrom<(DBKey, &str, &str)> for FileEntry{
-    type Error=anyhow::Error;
+impl TryFrom<(DBKeySeedTuple, &str, &str)> for FileEntry {
+    type Error = anyhow::Error;
 
-    fn try_from((db_key, lib_path, file_path): (DBKey, &str, &str)) -> std::prelude::v1::Result<Self, Self::Error> {
-
-        let host_template = HostTemplate::try_from(&db_key).context("while parsing host template from db key")?;
+    fn try_from(
+        (db_key_tuple, lib_path, file_path): (DBKeySeedTuple, &str, &str),
+    ) -> std::prelude::v1::Result<Self, Self::Error> {
+        let host_template = HostTemplate::try_from(&db_key_tuple)
+            .context("while parsing host template from db key")?;
 
         let accepted_algorithms = match host_template.template {
             tssh_core::tpm::Template::RSA(rsa_template) => match rsa_template.keybits {
@@ -73,26 +75,22 @@ impl TryFrom<(DBKey, &str, &str)> for FileEntry{
         };
 
         Ok(Self {
-            host: db_key.host,
-            username: db_key.username,
-            port: db_key.port,
+            host: db_key_tuple.key.host.clone(),
+            username: db_key_tuple.key.username.clone(),
+            port: db_key_tuple.key.port,
             pkcs11_provider: lib_path.to_string(),
             identity_file: file_path.to_string(),
             accepted_algorithms: accepted_algorithms.to_string(),
         })
-
-
     }
 }
-
-
 
 const KEY_DIR_NAME: &str = "keys";
 const SSH_FILE_NAME: &str = "ssh_file";
 
 pub fn write<T>(i: T, env: &DirEnv) -> Result<()>
 where
-    T: IntoIterator<Item = DBKey>,
+    T: IntoIterator<Item = DBKeySeedTuple>,
 {
     let tssh_key_dir = env.data_dir.join(KEY_DIR_NAME);
 
@@ -105,7 +103,7 @@ where
     let mut ssh_file_content = String::new();
 
     for x in i.into_iter() {
-        let file_path = tssh_key_dir.join(format!("{}.pub", x.pkcs11_id));
+        let file_path = tssh_key_dir.join(format!("{}.pub", x.key.pkcs11_id));
 
         let mut file = OpenOptions::new()
             .write(true)
@@ -115,7 +113,7 @@ where
             .open(&file_path)
             .context("while creating keyfile")?;
 
-        file.write_all(x.pub_key.as_bytes())
+        file.write_all(x.key.pub_key.as_bytes())
             .context("while writing to keyfile")?;
         ssh_file_content.push_str(
             FileEntry::try_from((
@@ -128,7 +126,8 @@ where
         );
     }
 
-    std::fs::write(tssh_ssh_file_path, ssh_file_content.as_bytes()).context("while writing ssh file")
+    std::fs::write(tssh_ssh_file_path, ssh_file_content.as_bytes())
+        .context("while writing ssh file")
 }
 
 pub fn generate_include(env: &DirEnv) -> Result<String> {
