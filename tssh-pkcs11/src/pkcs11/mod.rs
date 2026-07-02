@@ -39,6 +39,7 @@ use pkcs11_sys::{
     CKR_ATTRIBUTE_TYPE_INVALID, CKR_BUFFER_TOO_SMALL, CKR_DEVICE_ERROR, CKR_FUNCTION_NOT_SUPPORTED,
     CKR_GENERAL_ERROR, CKR_MECHANISM_INVALID, CKR_OK,
 };
+use ssh_key::PublicKey;
 use tracing_subscriber::EnvFilter;
 
 use tracing::{debug, error, trace, warn};
@@ -434,7 +435,7 @@ pub unsafe extern "C" fn C_GetAttributeValue(
         function_name!()
     );
 
-    let key = match get_key_tuple_from_db(h_object) {
+    let key_seed_tuple = match get_key_tuple_from_db(h_object) {
         Ok(key) => key,
         Err(e) => {
             error!("error while getting handle {h_object} for session {h_session}: {e}");
@@ -442,7 +443,7 @@ pub unsafe extern "C" fn C_GetAttributeValue(
         }
     };
 
-    let host_template = match tpm::HostTemplate::try_from(&key) {
+    let host_template = match tpm::HostTemplate::try_from(&key_seed_tuple) {
         Ok(t) => t,
         Err(e) => {
             error!("can't get template from db key: {e}");
@@ -461,11 +462,11 @@ pub unsafe extern "C" fn C_GetAttributeValue(
 
                 if attr.pValue.is_null() {
                     debug!("CKA ID size request");
-                    attr.ulValueLen = key.key.pkcs11_id.len() as u64;
+                    attr.ulValueLen = key_seed_tuple.key.pkcs11_id.len() as u64;
                     continue;
                 }
 
-                if attr.ulValueLen < key.key.pkcs11_id.len() as u64 {
+                if attr.ulValueLen < key_seed_tuple.key.pkcs11_id.len() as u64 {
                     warn!("Buffer to small in CKA ID");
                     attr.ulValueLen = CK_UNAVAILABLE_INFORMATION;
                     global_return = CKR_BUFFER_TOO_SMALL;
@@ -473,17 +474,17 @@ pub unsafe extern "C" fn C_GetAttributeValue(
                 }
                 trace!(
                     "Returnin CK_ID={} len={}",
-                    key.key.pkcs11_id,
-                    key.key.pkcs11_id.len()
+                    key_seed_tuple.key.pkcs11_id,
+                    key_seed_tuple.key.pkcs11_id.len()
                 );
                 unsafe {
                     std::ptr::copy_nonoverlapping(
-                        key.key.pkcs11_id.as_ptr(),
+                        key_seed_tuple.key.pkcs11_id.as_ptr(),
                         attr.pValue as *mut u8,
-                        key.key.pkcs11_id.len(),
+                        key_seed_tuple.key.pkcs11_id.len(),
                     );
                 }
-                attr.ulValueLen = key.key.pkcs11_id.len() as u64;
+                attr.ulValueLen = key_seed_tuple.key.pkcs11_id.len() as u64;
             }
             CKA_ECDSA_PARAMS => {
                 trace!("{i} call asking for CKA_ECDSA_PARAMS for object {h_object}");
@@ -527,32 +528,35 @@ pub unsafe extern "C" fn C_GetAttributeValue(
             }
             CKA_EC_POINT => {
                 trace!("{i} call asking for CKA_EC_POINT for object {h_object}");
+                //TODO: do the sec conversion somwhere else
 
-                let mut tpm = get_tpm();
-
-                let tpm_key = match tpm.get_primary_key(&host_template) {
-                    Ok(key) => key,
+                let pub_key = match PublicKey::from_openssh(&key_seed_tuple.key.pub_key) {
+                    Ok(k) => k,
                     Err(e) => {
-                        error!("can't get key from tpm: {e}");
+                        error!("can't parse ecc pubkey: {e}");
                         return CKR_GENERAL_ERROR;
                     }
                 };
 
-                let ecc_key = match tpm_key.get_ecc_pub_key() {
-                    Ok(key) => key,
-                    Err(e) => {
-                        error!("can't get ecc key from tpm key: {e}");
+                let sec1_point = match pub_key.key_data() {
+                    ssh_key::public::KeyData::Ecdsa(ecdsa_public_key) => {
+                        ecdsa_public_key.as_sec1_bytes()
+                    }
+                    _ => {
+                        error!("Expected ECDSA public key");
                         return CKR_GENERAL_ERROR;
                     }
                 };
+                let mut ecc_point = vec![0x04];
 
-                let ecc_point = match ecc_key.get_cka_ec_point() {
-                    Ok(key) => key,
-                    Err(e) => {
-                        error!("can't ecc point from ecc key: {e}");
-                        return CKR_GENERAL_ERROR;
-                    }
-                };
+                if sec1_point.len() < 128 {
+                    ecc_point.push(sec1_point.len() as u8);
+                } else {
+                    ecc_point.push(0x81);
+                    ecc_point.push(sec1_point.len() as u8);
+                }
+
+                ecc_point.extend_from_slice(sec1_point);
 
                 if attr.pValue.is_null() {
                     debug!("CKA_EC_POINT size request");
@@ -580,11 +584,11 @@ pub unsafe extern "C" fn C_GetAttributeValue(
 
                 if attr.pValue.is_null() {
                     debug!("CKA LABEL size request");
-                    attr.ulValueLen = key.key.pkcs11_id.len() as u64;
+                    attr.ulValueLen = key_seed_tuple.key.pkcs11_id.len() as u64;
                     continue;
                 }
 
-                if attr.ulValueLen < key.key.pkcs11_id.len() as u64 {
+                if attr.ulValueLen < key_seed_tuple.key.pkcs11_id.len() as u64 {
                     warn!("Buffer to small in CKA_LABEL");
                     attr.ulValueLen = CK_UNAVAILABLE_INFORMATION;
                     global_return = CKR_BUFFER_TOO_SMALL;
@@ -593,47 +597,41 @@ pub unsafe extern "C" fn C_GetAttributeValue(
 
                 unsafe {
                     std::ptr::copy_nonoverlapping(
-                        key.key.pkcs11_id.as_ptr(),
+                        key_seed_tuple.key.pkcs11_id.as_ptr(),
                         attr.pValue as *mut u8,
-                        key.key.pkcs11_id.len(),
+                        key_seed_tuple.key.pkcs11_id.len(),
                     );
-                    attr.ulValueLen = key.key.pkcs11_id.len() as u64;
+                    attr.ulValueLen = key_seed_tuple.key.pkcs11_id.len() as u64;
                 }
                 trace!(
                     "Returnin CK_LABEL={} len={}",
-                    key.key.pkcs11_id,
-                    key.key.pkcs11_id.len()
+                    key_seed_tuple.key.pkcs11_id,
+                    key_seed_tuple.key.pkcs11_id.len()
                 );
             }
             CKA_PUBLIC_EXPONENT => {
                 trace!("{i} call asking for CKA_PUBLIC_Exponent for object {h_object}");
 
-                let mut tpm = get_tpm();
-
-                let tpm_key = match tpm.get_primary_key(&host_template) {
-                    Ok(key) => key,
+                let pub_key = match PublicKey::from_openssh(&key_seed_tuple.key.pub_key) {
+                    Ok(k) => k,
                     Err(e) => {
-                        error!("can't get key from tpm: {e}");
+                        error!("can't parse ecc pubkey: {e}");
                         return CKR_GENERAL_ERROR;
                     }
                 };
 
-                let rsa_key = match tpm_key.get_rsa_pub_key() {
-                    Ok(key) => key,
-                    Err(e) => {
-                        error!("can't get rsa key from tpm key: {e}");
+                let exponent_bytes = match pub_key.key_data() {
+                    ssh_key::public::KeyData::Rsa(rsa_pub_key) => rsa_pub_key.e.as_bytes(),
+                    _ => {
+                        error!("Expected RSA public key");
                         return CKR_GENERAL_ERROR;
                     }
                 };
 
-                let exponent_be_bytes = rsa_key.exponent.to_be_bytes();
-
-                //according to spec we must cut leading 0
-
-                let exponent = match exponent_be_bytes.iter().position(|b| *b != 0) {
-                    Some(idx) => &exponent_be_bytes[idx..],
-                    None => &[0], //dunno ...
-                };
+                let mut exponent = exponent_bytes;
+                if exponent_bytes.first() == Some(&0x00) {
+                    exponent = &exponent_bytes[1..];
+                }
 
                 if attr.pValue.is_null() {
                     debug!("CKA_PUBLIC_EXPONENT size request");
@@ -659,31 +657,36 @@ pub unsafe extern "C" fn C_GetAttributeValue(
             CKA_MODULUS => {
                 trace!("{i} call asking for CKA_MODULUS for object {h_object}");
 
-                let mut tpm = get_tpm();
+                //TODO: do the sec conversion somwhere else
 
-                let tpm_key = match tpm.get_primary_key(&host_template) {
-                    Ok(key) => key,
+                let pub_key = match PublicKey::from_openssh(&key_seed_tuple.key.pub_key) {
+                    Ok(k) => k,
                     Err(e) => {
-                        error!("can't get key from tpm: {e}");
+                        error!("can't parse ecc pubkey: {e}");
                         return CKR_GENERAL_ERROR;
                     }
                 };
 
-                let rsa_key = match tpm_key.get_rsa_pub_key() {
-                    Ok(key) => key,
-                    Err(e) => {
-                        error!("can't get rsa key from tpm key: {e}");
+                let modulus_bytes = match pub_key.key_data() {
+                    ssh_key::public::KeyData::Rsa(rsa_pub_key) => rsa_pub_key.n.as_bytes(),
+                    _ => {
+                        error!("Expected RSA public key");
                         return CKR_GENERAL_ERROR;
                     }
                 };
+
+                let mut rsa_key = modulus_bytes;
+                if modulus_bytes.first() == Some(&0x00) {
+                    rsa_key = &modulus_bytes[1..];
+                }
 
                 if attr.pValue.is_null() {
                     debug!("CKA_MODULUS size request");
-                    attr.ulValueLen = rsa_key.modulus.len() as u64;
+                    attr.ulValueLen = rsa_key.len() as u64;
                     continue;
                 }
 
-                if attr.ulValueLen < rsa_key.modulus.len() as u64 {
+                if attr.ulValueLen < rsa_key.len() as u64 {
                     warn!("Buffer to small in CKA_MODULUS");
                     attr.ulValueLen = CK_UNAVAILABLE_INFORMATION;
                     global_return = CKR_BUFFER_TOO_SMALL;
@@ -691,11 +694,11 @@ pub unsafe extern "C" fn C_GetAttributeValue(
                 }
                 unsafe {
                     std::ptr::copy_nonoverlapping(
-                        rsa_key.modulus.as_ptr(),
+                        rsa_key.as_ptr(),
                         attr.pValue as *mut u8,
-                        rsa_key.modulus.len(),
+                        rsa_key.len(),
                     );
-                    attr.ulValueLen = rsa_key.modulus.len() as u64;
+                    attr.ulValueLen = rsa_key.len() as u64;
                 }
             }
             CKA_KEY_TYPE => {

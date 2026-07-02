@@ -63,7 +63,7 @@ Type in the following command to extract the public key, which is ready to use:
 
 
 ```console
-localhost $> tssh get example.com
+localhost $> tssh get user@example.com
 ========== Key for user@example.com:22 =========
 
 ecdsa-sha2-nistp384 AAAAE2 .........
@@ -105,6 +105,7 @@ user@example.com $>
 * [ ] Backup key login (with different backends: plain, bitwarden,.. etc.)
 * [ ] Commandline completion
 * [ ] Apple secure enclave support
+* [ ] (Tkey)[https://www.tillitis.se/products/tkey/] support
 
 # License
 

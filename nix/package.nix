@@ -31,7 +31,7 @@ rustPlatform.buildRustPackage {
     name = "tssh-src";
     filter = (path: type: baseNameOf path != "nix");
   };
-  cargoHash = "sha256-uwNX5vju4/AncfFOxX4xrT33rUl6bHrTPhkpMIPRY9Y=";
+  cargoHash = "sha256-piV0NRlMiQ3IlX7YguYNrRQMkfmGJHi2R1ASAwuv4Ms=";
 
   nativeBuildInputs = [
     pkg-config

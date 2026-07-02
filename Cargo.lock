@@ -1902,6 +1902,7 @@ dependencies = [
  "p384",
  "p521",
  "pkcs11-sys",
+ "ssh-key",
  "tracing",
  "tracing-subscriber",
  "tssh-core",

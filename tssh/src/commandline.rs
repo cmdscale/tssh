@@ -54,8 +54,11 @@ pub struct ExternalSeed {
 
 #[derive(Subcommand, Debug)]
 pub enum SeedType {
+    #[cfg(target_os = "linux")]
     KeyUtils,
-    File { path: String },
+    File {
+        path: String,
+    },
 }
 
 impl From<SeedType> for tssh_core::external_seed::SeedConfig {
