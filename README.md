@@ -105,7 +105,7 @@ user@example.com $>
 * [ ] Backup key login (with different backends: plain, bitwarden,.. etc.)
 * [ ] Commandline completion
 * [ ] Apple secure enclave support
-* [ ] (Tkey)[https://www.tillitis.se/products/tkey/] support
+* [ ] [TKey](https://www.tillitis.se/products/tkey/) support
 
 # License
 
